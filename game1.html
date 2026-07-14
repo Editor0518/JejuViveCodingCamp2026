@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <title>Three.js 3D Game</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #000; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 20px; left: 20px;
+            color: white; font-family: sans-serif; font-size: 24px;
+            z-index: 10; pointer-events: none;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="ui">점수: <span id="score">0</span></div>
+
+    <script>
+        // 1. 기본 설정 (Scene, Camera, Renderer)
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        // 2. 조명 추가
+        const light = new THREE.DirectionalLight(0xffffff, 1);
+        light.position.set(0, 10, 10);
+        scene.add(light);
+        scene.add(new THREE.AmbientLight(0x404040));
+
+        // 3. 바닥 생성
+        const planeGeometry = new THREE.PlaneGeometry(20, 100);
+        const planeMaterial = new THREE.MeshStandardMaterial({ color: 0x555555 });
+        const plane = new THREE.Mesh(planeGeometry, planeMaterial);
+        plane.rotation.x = -Math.PI / 2;
+        plane.position.z = -40;
+        scene.add(plane);
+
+        // 4. 플레이어 생성
+        const playerGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const playerMaterial = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+        const player = new THREE.Mesh(playerGeometry, playerMaterial);
+        player.position.y = 0.5;
+        scene.add(player);
+
+        camera.position.set(0, 5, 5);
+        camera.lookAt(0, 0, -10);
+
+        // 5. 게임 변수 및 장애물 배열
+        let obstacles = [];
+        let score = 0;
+        let gameOver = false;
+        const scoreElement = document.getElementById('score');
+
+        // 사용자 입력 처리
+        const keys = { ArrowLeft: false, ArrowRight: false };
+        window.addEventListener('keydown', (e) => { if(keys[e.code] !== undefined) keys[e.code] = true; });
+        window.addEventListener('keyup', (e) => { if(keys[e.code] !== undefined) keys[e.code] = false; });
+
+        // 장애물 생성 함수
+        function spawnObstacle() {
+            if (gameOver) return;
+            const size = Math.random() * 1.5 + 0.5;
+            const geo = new THREE.BoxGeometry(size, size, size);
+            const mat = new THREE.MeshStandardMaterial({ color: 0xff0000 });
+            const obs = new THREE.Mesh(geo, mat);
+            
+            obs.position.x = (Math.random() - 0.5) * 10;
+            obs.position.y = size / 2;
+            obs.position.z = -50;
+            
+            scene.add(obs);
+            obstacles.push(obs);
+            
+            setTimeout(spawnObstacle, Math.random() * 1000 + 500);
+        }
+        spawnObstacle();
+
+        // 6. 애니메이션 및 게임 로직 루프
+        function animate() {
+            if (gameOver) return;
+            requestAnimationFrame(animate);
+
+            // 플레이어 이동
+            if (keys.ArrowLeft && player.position.x > -5) player.position.x -= 0.15;
+            if (keys.ArrowRight && player.position.x < 5) player.position.x += 0.15;
+
+            // 장애물 이동 및 충돌 체크
+            for (let i = obstacles.length - 1; i >= 0; i--) {
+                let obs = obstacles[i];
+                obs.position.z += 0.4; // 다가오는 속도
+
+                // 충돌 감지 (단순한 거리 계산)
+                if (Math.abs(obs.position.x - player.position.x) < 1 &&
+                    Math.abs(obs.position.z - player.position.z) < 1) {
+                    gameOver = true;
+                    alert("게임 오버! 최종 점수: " + Math.floor(score));
+                    return;
+                }
+
+                // 화면 밖으로 나간 장애물 제거 및 점수 증가
+                if (obs.position.z > 5) {
+                    scene.remove(obs);
+                    obstacles.splice(i, 1);
+                    score += 10;
+                    scoreElement.innerText = Math.floor(score);
+                }
+            }
+
+            score += 0.1; // 생존 점수
+            scoreElement.innerText = Math.floor(score);
+            
+            renderer.render(scene, camera);
+        }
+
+        // 브라우저 크기 변경 대응
+        window.addEventListener('resize', () => {
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+        });
+
+        animate();
+    </script>
+</body>
+</html>

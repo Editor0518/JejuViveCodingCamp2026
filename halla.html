@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>눈 덮인 한라산 3D 등반 시뮬레이터</title>
+    <style>
+        body { margin: 0; overflow: hidden; background-color: #a0d8ef; font-family: 'Malgun Gothic', sans-serif; }
+        canvas { display: block; cursor: crosshair; }
+
+        /* 상단 타이틀 패널 */
+        #ui-panel {
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            text-align: center;
+            color: white;
+            pointer-events: none;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px 30px;
+            border-radius: 12px;
+            backdrop-filter: blur(4px);
+        }
+        h1 { margin: 0; font-size: 22px; font-weight: bold; letter-spacing: 1px; }
+        p { margin: 8px 0 0 0; font-size: 14px; color: #e0e0e0; }
+
+        /* 하단 상태 HUD 패널 (고도 및 위치) */
+        #hud-panel {
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            pointer-events: none;
+        }
+        .hud-box {
+            background: rgba(20, 30, 40, 0.75);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            padding: 15px 25px;
+            border-radius: 8px;
+            color: white;
+            text-align: center;
+            min-width: 150px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+            backdrop-filter: blur(4px);
+        }
+        .hud-label {
+            font-size: 12px;
+            color: #a0d8ef;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        .hud-value {
+            font-size: 20px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+        }
+
+        /* 체크포인트 토스트 */
+        #toast-container {
+            position: absolute;
+            top: 110px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            pointer-events: none;
+            z-index: 20;
+        }
+        .checkpoint-toast {
+            background: rgba(10, 40, 70, 0.85);
+            border: 1px solid rgba(160, 216, 239, 0.6);
+            color: #fff;
+            padding: 12px 26px;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            text-shadow: 1px 1px 2px black;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+            opacity: 0;
+            transform: translateY(-15px);
+            transition: opacity 0.4s ease, transform 0.4s ease;
+        }
+        .checkpoint-toast.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+
+        /* 시작 / 클리어 오버레이 */
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(5, 15, 25, 0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+            z-index: 50;
+            backdrop-filter: blur(2px);
+        }
+        .overlay h2 {
+            font-size: 34px;
+            margin: 0 0 12px 0;
+            text-shadow: 2px 2px 6px rgba(0,0,0,0.8);
+        }
+        .overlay p {
+            font-size: 16px;
+            color: #dbeeff;
+        }
+        .overlay button {
+            margin-top: 24px;
+            padding: 12px 32px;
+            font-size: 16px;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            background: #2f7dc9;
+            color: white;
+            cursor: pointer;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.4);
+        }
+        .overlay button:hover { background: #3d94e8; }
+        #clear-time { color: #ffe08a; }
+    </style>
+</head>
+<body>
+    <div id="ui-panel">
+        <h1>한라산 백록담 코스</h1>
+        <p>WASD 이동 · 마우스로 시점 회전 (3인칭) · ESC로 마우스 잠금 해제</p>
+    </div>
+
+    <!-- HUD (Heads Up Display) 상태창 -->
+    <div id="hud-panel">
+        <div class="hud-box">
+            <div class="hud-label">현재 고도</div>
+            <div class="hud-value" id="altitude-val">0 m</div>
+        </div>
+        <div class="hud-box">
+            <div class="hud-label">현재 위치</div>
+            <div class="hud-value" id="location-val">대기 중...</div>
+        </div>
+    </div>
+
+    <div id="toast-container"></div>
+
+    <div id="start-overlay" class="overlay">
+        <h2>한라산 백록담 등반</h2>
+        <p>클릭하여 등반을 시작하세요</p>
+        <p>WASD로 이동, 마우스로 시점을 둘러보며 정상까지 올라가 보세요.</p>
+        <button id="start-btn">등반 시작</button>
+    </div>
+
+    <div id="clear-overlay" class="overlay" style="display:none;">
+        <h2>🏔 백록담 정상 정복!</h2>
+        <p>등반 소요 시간: <span id="clear-time">0</span>초</p>
+        <button id="retry-btn">다시 도전</button>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script>
+        // ===== 1. Scene / Camera / Renderer =====
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.FogExp2(0xa0d8ef, 0.003);
+
+        const camera = new THREE.PerspectiveCamera(65, window.innerWidth / window.innerHeight, 0.1, 1500);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        // ===== 2. Lights =====
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.45);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 1.0);
+        dirLight.position.set(150, 250, 100);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.left = -300;
+        dirLight.shadow.camera.right = 300;
+        dirLight.shadow.camera.top = 300;
+        dirLight.shadow.camera.bottom = -300;
+        scene.add(dirLight);
+
+        // ===== 3. Terrain (지형 생성 + 높이 샘플링 유틸) =====
+        const maxVirtualHeight = 140;
+
+        // 결정론적(노이즈 제외) 기본 높이 - 오브젝트 배치용 사전 필터에 사용
+        function getBaseHeight(x, z) {
+            const distance = Math.sqrt(x * x + z * z);
+            let height = Math.max(0, maxVirtualHeight - distance * 0.5);
+            if (distance < 50) {
+                height -= (50 - distance) * 1.2;
+            }
+            return height;
+        }
+
+        const geometry = new THREE.PlaneGeometry(800, 800, 150, 150);
+        geometry.rotateX(-Math.PI / 2);
+
+        const vertices = geometry.attributes.position.array;
+        const colors = [];
+        const color = new THREE.Color();
+
+        for (let i = 0; i < vertices.length; i += 3) {
+            const x = vertices[i];
+            const z = vertices[i + 2];
+
+            let height = getBaseHeight(x, z);
+            height += (Math.random() * 3.5);
+            vertices[i + 1] = height;
+
+            if (height > 95) {
+                color.setHex(0xffffff); // 설산
+            } else if (height > 65) {
+                const factor = (height - 65) / 30;
+                color.setHex(0x736c61).lerp(new THREE.Color(0xffffff), factor); // 암석
+            } else {
+                const factor = height / 65;
+                color.setHex(0x2a451c).lerp(new THREE.Color(0x736c61), factor); // 숲
+            }
+            colors.push(color.r, color.g, color.b);
+        }
+
+        geometry.computeVertexNormals();
+        geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
+
+        const material = new THREE.MeshStandardMaterial({
+            vertexColors: true,
+            roughness: 0.8,
+            metalness: 0.1,
+            flatShading: true
+        });
+
+        const mountain = new THREE.Mesh(geometry, material);
+        mountain.castShadow = true;
+        mountain.receiveShadow = true;
+        scene.add(mountain);
+
+        // 실제 지형(노이즈 포함) 높이 raycast 헬퍼 - 캐릭터/카메라/오브젝트 배치 공용
+        const terrainRaycaster = new THREE.Raycaster();
+        const downVector = new THREE.Vector3(0, -1, 0);
+        function getTerrainHeightAt(x, z) {
+            terrainRaycaster.set(new THREE.Vector3(x, 800, z), downVector);
+            const hits = terrainRaycaster.intersectObject(mountain);
+            return hits.length > 0 ? hits[0].point.y : 0;
+        }
+
+        // ===== 4. Sky / Clouds =====
+        function createSkyDome() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 2; canvas.height = 512;
+            const ctx = canvas.getContext('2d');
+            const grad = ctx.createLinearGradient(0, 0, 0, 512);
+            grad.addColorStop(0, '#4a90d9');
+            grad.addColorStop(0.55, '#a0d8ef');
+            grad.addColorStop(1, '#eaf7ff');
+            ctx.fillStyle = grad;
+            ctx.fillRect(0, 0, 2, 512);
+            const tex = new THREE.CanvasTexture(canvas);
+            scene.background = tex;
+        }
+        createSkyDome();
+
+        function createClouds() {
+            const cloudGroup = new THREE.Group();
+            const cloudMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 });
+            for (let i = 0; i < 16; i++) {
+                const cluster = new THREE.Group();
+                const puffCount = 3 + Math.floor(Math.random() * 3);
+                for (let j = 0; j < puffCount; j++) {
+                    const puff = new THREE.Mesh(new THREE.IcosahedronGeometry(4 + Math.random() * 4, 0), cloudMat);
+                    puff.position.set((Math.random() - 0.5) * 14, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 10);
+                    cluster.add(puff);
+                }
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 150 + Math.random() * 300;
+                cluster.position.set(Math.sin(angle) * dist, 160 + Math.random() * 90, Math.cos(angle) * dist);
+                cloudGroup.add(cluster);
+            }
+            scene.add(cloudGroup);
+        }
+        createClouds();
+
+        // ===== 5. Environment Objects (나무/바위 InstancedMesh) =====
+        function scatterEnvironmentObjects() {
+            const treeGeo = new THREE.ConeGeometry(1.2, 3.5, 6);
+            const treeMat = new THREE.MeshStandardMaterial({ color: 0x1f3d1a, flatShading: true });
+            const trunkGeo = new THREE.CylinderGeometry(0.25, 0.3, 1.2, 5);
+            const trunkMat = new THREE.MeshStandardMaterial({ color: 0x4a3524, flatShading: true });
+
+            const treeCount = 400;
+            const treeCanopy = new THREE.InstancedMesh(treeGeo, treeMat, treeCount);
+            const treeTrunk = new THREE.InstancedMesh(trunkGeo, trunkMat, treeCount);
+            treeCanopy.castShadow = treeTrunk.castShadow = true;
+            treeCanopy.receiveShadow = treeTrunk.receiveShadow = true;
+
+            const rockGeo = new THREE.DodecahedronGeometry(1, 0);
+            const rockMat = new THREE.MeshStandardMaterial({ color: 0x8a8378, flatShading: true });
+            const rockCount = 250;
+            const rocks = new THREE.InstancedMesh(rockGeo, rockMat, rockCount);
+            rocks.castShadow = rocks.receiveShadow = true;
+
+            const dummy = new THREE.Object3D();
+            let treeIdx = 0, rockIdx = 0;
+            let attempts = 0;
+            while ((treeIdx < treeCount || rockIdx < rockCount) && attempts < 6000) {
+                attempts++;
+                const angle = Math.random() * Math.PI * 2;
+                const dist = 55 + Math.random() * 340;
+                const x = Math.sin(angle) * dist;
+                const z = Math.cos(angle) * dist;
+                const h = getTerrainHeightAt(x, z);
+
+                if (h > 20 && h <= 70 && treeIdx < treeCount) {
+                    dummy.position.set(x, h, z);
+                    const s = 0.7 + Math.random() * 0.6;
+                    dummy.scale.setScalar(s);
+                    dummy.rotation.set(0, Math.random() * Math.PI * 2, 0);
+                    dummy.updateMatrix();
+                    treeTrunk.setMatrixAt(treeIdx, dummy.matrix);
+                    dummy.position.y = h + 2.3 * s;
+                    dummy.updateMatrix();
+                    treeCanopy.setMatrixAt(treeIdx, dummy.matrix);
+                    treeIdx++;
+                } else if (h > 60 && h <= 110 && rockIdx < rockCount) {
+                    dummy.position.set(x, h + 0.4, z);
+                    dummy.scale.setScalar(0.4 + Math.random() * 1.0);
+                    dummy.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+                    dummy.updateMatrix();
+                    rocks.setMatrixAt(rockIdx, dummy.matrix);
+                    rockIdx++;
+                }
+            }
+            treeCanopy.count = treeIdx;
+            treeTrunk.count = treeIdx;
+            rocks.count = rockIdx;
+            [treeCanopy, treeTrunk, rocks].forEach(m => m.instanceMatrix.needsUpdate = true);
+
+            scene.add(treeCanopy, treeTrunk, rocks);
+        }
+        scatterEnvironmentObjects();
+
+        // ===== 6. Character (캐릭터 모델 + 걷기 애니메이션) =====
+        function createLimb(mat, radius, length) {
+            const pivot = new THREE.Group();
+            const mesh = new THREE.Mesh(new THREE.CylinderGeometry(radius, radius * 0.9, length, 6), mat);
+            mesh.position.y = -length / 2;
+            mesh.castShadow = true;
+            pivot.add(mesh);
+            return pivot;
+        }
+
+        function createCharacter() {
+            const group = new THREE.Group();
+
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xd6432e, flatShading: true });
+            const skinMat = new THREE.MeshStandardMaterial({ color: 0xf0c090, flatShading: true });
+            const limbMat = new THREE.MeshStandardMaterial({ color: 0x2b2b3a, flatShading: true });
+            const capMat = new THREE.MeshStandardMaterial({ color: 0x1c2b52, flatShading: true });
+
+            const torso = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.28, 0.9, 8), bodyMat);
+            torso.position.y = 1.15;
+            torso.castShadow = true;
+            group.add(torso);
+
+            const head = new THREE.Mesh(new THREE.SphereGeometry(0.28, 10, 10), skinMat);
+            head.position.y = 1.85;
+            head.castShadow = true;
+            group.add(head);
+
+            const cap = new THREE.Mesh(new THREE.SphereGeometry(0.29, 10, 10, 0, Math.PI * 2, 0, Math.PI / 2.2), capMat);
+            cap.position.y = 1.9;
+            cap.castShadow = true;
+            group.add(cap);
+
+            const leftArm = createLimb(bodyMat, 0.11, 0.7);
+            leftArm.position.set(0.42, 1.55, 0);
+            const rightArm = createLimb(bodyMat, 0.11, 0.7);
+            rightArm.position.set(-0.42, 1.55, 0);
+
+            const leftLeg = createLimb(limbMat, 0.14, 0.8);
+            leftLeg.position.set(0.16, 0.75, 0);
+            const rightLeg = createLimb(limbMat, 0.14, 0.8);
+            rightLeg.position.set(-0.16, 0.75, 0);
+
+            group.add(leftArm, rightArm, leftLeg, rightLeg);
+
+            // 배낭 (등반 컨셉 디테일)
+            const backpack = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.5, 0.22), new THREE.MeshStandardMaterial({ color: 0x3a6b3a, flatShading: true }));
+            backpack.position.set(0, 1.2, 0.28);
+            backpack.castShadow = true;
+            group.add(backpack);
+
+            return { group, parts: { leftArm, rightArm, leftLeg, rightLeg } };
+        }
+
+        const character = createCharacter();
+        character.group.position.set(0, 0, 350);
+        scene.add(character.group);
+
+        function smoothAngleLerp(current, target, t) {
+            let diff = target - current;
+            while (diff > Math.PI) diff -= Math.PI * 2;
+            while (diff < -Math.PI) diff += Math.PI * 2;
+            return current + diff * t;
+        }
+
+        let walkCycleTime = 0;
+        function updateCharacterAnimation(delta, isMoving) {
+            const { leftArm, rightArm, leftLeg, rightLeg } = character.parts;
+            if (isMoving) {
+                walkCycleTime += delta * 8;
+                const swing = Math.sin(walkCycleTime) * 0.6;
+                leftArm.rotation.x = swing;
+                rightArm.rotation.x = -swing;
+                leftLeg.rotation.x = -swing;
+                rightLeg.rotation.x = swing;
+            } else {
+                leftArm.rotation.x = THREE.MathUtils.lerp(leftArm.rotation.x, 0, 0.1);
+                rightArm.rotation.x = THREE.MathUtils.lerp(rightArm.rotation.x, 0, 0.1);
+                leftLeg.rotation.x = THREE.MathUtils.lerp(leftLeg.rotation.x, 0, 0.1);
+                rightLeg.rotation.x = THREE.MathUtils.lerp(rightLeg.rotation.x, 0, 0.1);
+            }
+        }
+
+        // ===== 7. Input (키보드 + 포인터락 마우스) =====
+        const keys = { w: false, a: false, s: false, d: false };
+        document.addEventListener('keydown', (e) => { if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = true; });
+        document.addEventListener('keyup', (e) => { if (keys.hasOwnProperty(e.key.toLowerCase())) keys[e.key.toLowerCase()] = false; });
+
+        const cameraRig = {
+            yaw: Math.PI,
+            pitch: 0.35,
+            distance: 8,
+            minPitch: -0.2,
+            maxPitch: 1.2,
+            minDistance: 3,
+            maxDistance: 14
+        };
+
+        document.addEventListener('mousemove', (e) => {
+            if (document.pointerLockElement !== document.body) return;
+            cameraRig.yaw -= e.movementX * 0.0025;
+            cameraRig.pitch -= e.movementY * 0.0025;
+            cameraRig.pitch = THREE.MathUtils.clamp(cameraRig.pitch, cameraRig.minPitch, cameraRig.maxPitch);
+        });
+
+        document.addEventListener('wheel', (e) => {
+            if (gameState !== 'playing') return;
+            cameraRig.distance = THREE.MathUtils.clamp(cameraRig.distance + e.deltaY * 0.01, cameraRig.minDistance, cameraRig.maxDistance);
+        });
+
+        // ===== 8. Third-Person Camera Controller =====
+        const collisionRaycaster = new THREE.Raycaster();
+
+        function updateCameraFollow() {
+            const target = new THREE.Vector3(
+                character.group.position.x,
+                character.group.position.y + 1.4,
+                character.group.position.z
+            );
+
+            const offset = new THREE.Vector3(
+                Math.sin(cameraRig.yaw) * Math.cos(cameraRig.pitch),
+                Math.sin(cameraRig.pitch),
+                Math.cos(cameraRig.yaw) * Math.cos(cameraRig.pitch)
+            ).multiplyScalar(cameraRig.distance);
+
+            const dir = offset.clone().normalize();
+            const rayLen = offset.length();
+            collisionRaycaster.set(target, dir);
+            const hits = collisionRaycaster.intersectObject(mountain);
+            let actualDistance = cameraRig.distance;
+            if (hits.length > 0 && hits[0].distance < rayLen) {
+                actualDistance = Math.max(cameraRig.minDistance, hits[0].distance - 0.5);
+            }
+
+            const desiredPos = target.clone().addScaledVector(dir, actualDistance);
+
+            const terrainY = getTerrainHeightAt(desiredPos.x, desiredPos.z);
+            if (desiredPos.y < terrainY + 1.0) desiredPos.y = terrainY + 1.0;
+
+            camera.position.lerp(desiredPos, 0.25);
+            camera.lookAt(target);
+        }
+
+        // ===== 9. Movement (WASD 카메라 기준 이동 + 지면 고정) =====
+        const speed = 0.5;
+
+        function updateCharacterMovement(delta) {
+            const forward = new THREE.Vector3(Math.sin(cameraRig.yaw), 0, Math.cos(cameraRig.yaw));
+            const right = new THREE.Vector3(-forward.z, 0, forward.x);
+
+            const moveDir = new THREE.Vector3();
+            if (keys.w) moveDir.add(forward);
+            if (keys.s) moveDir.sub(forward);
+            if (keys.d) moveDir.add(right);
+            if (keys.a) moveDir.sub(right);
+
+            const isMoving = moveDir.lengthSq() > 0;
+            if (isMoving) {
+                moveDir.normalize();
+                const moveScale = delta * 60;
+                character.group.position.addScaledVector(moveDir, speed * moveScale);
+                const targetHeading = Math.atan2(moveDir.x, moveDir.z);
+                character.group.rotation.y = smoothAngleLerp(character.group.rotation.y, targetHeading, 0.18);
+            }
+
+            const terrainHeight = getTerrainHeightAt(character.group.position.x, character.group.position.z);
+            character.group.position.y = terrainHeight;
+
+            updateCharacterAnimation(delta, isMoving);
+            return { terrainHeight, isMoving };
+        }
+
+        // ===== 10. Checkpoint / Progress Manager =====
+        const altitudeEl = document.getElementById('altitude-val');
+        const locationEl = document.getElementById('location-val');
+        const toastContainer = document.getElementById('toast-container');
+        const clearOverlay = document.getElementById('clear-overlay');
+        const clearTimeEl = document.getElementById('clear-time');
+
+        function updateHUD(terrainHeight, distToCenter) {
+            const realAltitude = Math.floor((Math.max(0, terrainHeight) / maxVirtualHeight) * 1947);
+            let locationText = "";
+
+            if (distToCenter < 50) {
+                locationText = "백록담 (분화구)";
+                altitudeEl.innerText = "1947 m";
+            } else if (terrainHeight > 95) {
+                locationText = "고지대 (눈 덮인 설산)";
+                altitudeEl.innerText = `${Math.min(1947, realAltitude)} m`;
+            } else if (terrainHeight > 65) {
+                locationText = "중턱 (암석 및 관목 지대)";
+                altitudeEl.innerText = `${Math.min(1947, realAltitude)} m`;
+            } else {
+                locationText = "저지대 (푸른 숲길)";
+                altitudeEl.innerText = `${Math.min(1947, realAltitude)} m`;
+            }
+            locationEl.innerText = locationText;
+        }
+
+        function showToast(text) {
+            const toast = document.createElement('div');
+            toast.className = 'checkpoint-toast';
+            toast.textContent = text;
+            toastContainer.appendChild(toast);
+            requestAnimationFrame(() => toast.classList.add('show'));
+            setTimeout(() => {
+                toast.classList.remove('show');
+                setTimeout(() => toast.remove(), 500);
+            }, 2500);
+        }
+
+        const checkpoints = [
+            { id: 'mid', label: '중턱 도달 - 암석 및 관목 지대', test: (h, d) => h > 65 && h <= 95, reached: false },
+            { id: 'high', label: '고지대 도달 - 눈 덮인 설산', test: (h, d) => h > 95 && d >= 50, reached: false },
+            { id: 'summit', label: '백록담 정상 도달!', test: (h, d) => d < 50, reached: false },
+        ];
+
+        let climbStartTime = null;
+        let climbFinished = false;
+
+        function updateCheckpoints(terrainHeight, distToCenter) {
+            for (const cp of checkpoints) {
+                if (!cp.reached && cp.test(terrainHeight, distToCenter)) {
+                    cp.reached = true;
+                    showToast(cp.label);
+                    if (cp.id === 'summit' && !climbFinished) {
+                        climbFinished = true;
+                        const elapsedSec = ((performance.now() - climbStartTime) / 1000).toFixed(1);
+                        showClearScreen(elapsedSec);
+                    }
+                }
+            }
+        }
+
+        function showClearScreen(elapsedSec) {
+            gameState = 'cleared';
+            document.exitPointerLock();
+            clearTimeEl.textContent = elapsedSec;
+            clearOverlay.style.display = 'flex';
+        }
+
+        // ===== 11. Snow Particle System =====
+        function createSnow(count) {
+            const positions = new Float32Array(count * 3);
+            const speeds = new Float32Array(count);
+            for (let i = 0; i < count; i++) {
+                positions[i * 3] = (Math.random() - 0.5) * 400;
+                positions[i * 3 + 1] = Math.random() * 250;
+                positions[i * 3 + 2] = (Math.random() - 0.5) * 400;
+                speeds[i] = 0.5 + Math.random() * 1.2;
+            }
+            const geo = new THREE.BufferGeometry();
+            geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+            const mat = new THREE.PointsMaterial({ color: 0xffffff, size: 1.1, transparent: true, opacity: 0.8, depthWrite: false });
+            const snow = new THREE.Points(geo, mat);
+            snow.userData.speeds = speeds;
+            return snow;
+        }
+
+        const snow = createSnow(1200);
+        scene.add(snow);
+
+        function updateSnow(delta) {
+            const posAttr = snow.geometry.attributes.position;
+            const speeds = snow.userData.speeds;
+            for (let i = 0; i < posAttr.count; i++) {
+                let y = posAttr.getY(i) - speeds[i] * delta * 20;
+                if (y < 0) y = 250;
+                posAttr.setY(i, y);
+            }
+            posAttr.needsUpdate = true;
+            snow.position.x = camera.position.x;
+            snow.position.z = camera.position.z;
+        }
+
+        // ===== 12. Game State / Overlays =====
+        let gameState = 'idle'; // 'idle' | 'playing' | 'cleared'
+
+        const startOverlay = document.getElementById('start-overlay');
+        const startBtn = document.getElementById('start-btn');
+        const retryBtn = document.getElementById('retry-btn');
+
+        function beginClimb() {
+            document.body.requestPointerLock();
+        }
+
+        document.addEventListener('pointerlockchange', () => {
+            if (document.pointerLockElement === document.body) {
+                gameState = 'playing';
+                startOverlay.style.display = 'none';
+                if (climbStartTime === null) climbStartTime = performance.now();
+            } else if (gameState === 'playing') {
+                gameState = 'idle';
+                startOverlay.style.display = 'flex';
+            }
+        });
+
+        startBtn.addEventListener('click', beginClimb);
+        retryBtn.addEventListener('click', () => location.reload());
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        // ===== 13. Main Loop =====
+        const clock = new THREE.Clock();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const delta = Math.min(clock.getDelta(), 0.1);
+
+            if (gameState === 'playing') {
+                const { terrainHeight, isMoving } = updateCharacterMovement(delta);
+                updateCameraFollow();
+                const distToCenter = Math.hypot(character.group.position.x, character.group.position.z);
+                updateHUD(terrainHeight, distToCenter);
+                updateCheckpoints(terrainHeight, distToCenter);
+            }
+
+            updateSnow(delta);
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
