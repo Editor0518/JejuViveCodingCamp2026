@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>학생 데이터 분석 대시보드</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --card:#fff; --ink:#1f2937; --muted:#6b7280;
+    --line:#e5e7eb; --accent:#4f46e5; --accent2:#06b6d4;
+    --good:#16a34a; --warn:#d97706; --bad:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI","Malgun Gothic",sans-serif;background:var(--bg);color:var(--ink)}
+  header{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;padding:28px 24px}
+  header h1{margin:0;font-size:24px}
+  header p{margin:6px 0 0;opacity:.9;font-size:14px}
+  .wrap{max-width:1100px;margin:0 auto;padding:24px}
+  .cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:14px;margin-bottom:24px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px}
+  .card .label{font-size:13px;color:var(--muted)}
+  .card .value{font-size:26px;font-weight:700;margin-top:6px}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+  @media(max-width:760px){.grid2{grid-template-columns:1fr}}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:18px;margin-bottom:18px}
+  .panel h2{margin:0 0 14px;font-size:16px}
+  .bar-row{display:flex;align-items:center;gap:10px;margin:8px 0;font-size:13px}
+  .bar-row .name{width:64px;color:var(--muted)}
+  .bar-track{flex:1;background:#eef2f7;border-radius:6px;overflow:hidden;height:20px}
+  .bar-fill{height:100%;background:linear-gradient(90deg,var(--accent),var(--accent2));border-radius:6px}
+  .bar-row .num{width:44px;text-align:right;font-variant-numeric:tabular-nums}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{padding:9px 8px;border-bottom:1px solid var(--line);text-align:center}
+  th{background:#f8fafc;cursor:pointer;user-select:none;white-space:nowrap}
+  th:hover{color:var(--accent)}
+  td.name{font-weight:600}
+  .toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+  .toolbar input,.toolbar select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13px}
+  .pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:600}
+  .p-good{background:#dcfce7;color:var(--good)}
+  .p-mid{background:#fef3c7;color:var(--warn)}
+  .p-low{background:#fee2e2;color:var(--bad)}
+  .chart{display:flex;align-items:flex-end;gap:6px;height:180px;padding-top:10px}
+  .chart .col{flex:1;display:flex;flex-direction:column;justify-content:flex-end;align-items:center;gap:4px}
+  .chart .colbar{width:70%;background:linear-gradient(180deg,var(--accent2),var(--accent));border-radius:5px 5px 0 0}
+  .chart .collabel{font-size:11px;color:var(--muted)}
+  footer{text-align:center;color:var(--muted);font-size:13px;padding:20px}
+  .err{background:#fee2e2;color:var(--bad);padding:14px;border-radius:10px}
+</style>
+</head>
+<body>
+<header>
+  <h1>📊 학생 데이터 분석 대시보드</h1>
+  <p>students.csv 기반 · 30명 학생 성적 및 출석 분석</p>
+</header>
+<div class="wrap" id="app">
+  <p>데이터를 불러오는 중…</p>
+</div>
+<footer>JejuViveCodingCamp2026 · 학생 데이터 분석</footer>
+
+<script>
+const SUBJECTS = ["국어","영어","수학","과학","사회"];
+let students = [];
+let sortKey = "총점", sortDir = -1;
+
+// students.csv 데이터를 직접 내장 (file:// 로 열어도 동작하도록)
+const CSV_DATA = `학번,이름,성별,학년,반,국어,영어,수학,과학,사회,출석일수
+2026001,김민준,남,1,2,98,58,80,97,99,186
+2026002,이서연,여,1,3,59,65,95,51,58,187
+2026003,박도윤,남,1,4,85,60,73,89,65,181
+2026004,최지우,여,1,4,95,55,70,66,77,183
+2026005,정하준,남,3,4,72,77,82,54,52,183
+2026006,강서윤,여,1,4,51,54,53,71,53,184
+2026007,조예준,남,2,2,80,79,52,67,51,187
+2026008,윤지호,여,1,3,91,96,53,95,79,177
+2026009,장수아,남,2,4,73,73,73,88,70,179
+2026010,임건우,여,2,3,92,97,95,52,95,183
+2026011,한지민,남,1,1,58,66,84,69,51,180
+2026012,오유진,여,2,2,97,84,95,50,71,178
+2026013,신동현,남,2,2,63,70,71,98,71,180
+2026014,권채원,여,3,3,69,90,52,78,60,180
+2026015,황시우,남,3,2,77,89,94,79,84,188
+2026016,안예은,여,3,2,96,59,56,62,50,181
+2026017,송재원,남,1,2,64,72,76,51,84,188
+2026018,전하은,여,1,4,98,61,67,61,51,180
+2026019,홍준서,남,2,2,87,61,63,77,74,180
+2026020,고나윤,여,3,1,99,83,63,54,90,189
+2026021,문서준,남,2,3,50,98,74,80,55,181
+2026022,양지안,여,3,1,71,68,62,62,91,189
+2026023,배현우,남,2,2,70,93,58,70,52,176
+2026024,백다은,여,1,1,99,85,77,91,98,189
+2026025,유주원,남,2,4,76,52,82,87,69,182
+2026026,남시연,여,2,3,96,74,57,64,75,184
+2026027,심우진,남,2,1,78,76,92,68,56,188
+2026028,노하린,여,1,1,87,75,93,90,72,186
+2026029,하지훈,남,2,3,71,76,85,87,70,180
+2026030,곽서아,여,3,2,57,99,85,89,52,189`;
+
+function load(){
+  try{
+    students = parseCSV(CSV_DATA);
+    render();
+  }catch(e){
+    document.getElementById("app").innerHTML =
+      '<div class="err">데이터를 처리하지 못했습니다: '+e.message+'</div>';
+  }
+}
+
+function parseCSV(text){
+  const lines = text.trim().split(/\r?\n/);
+  const head = lines[0].split(",");
+  return lines.slice(1).map(line=>{
+    const c = line.split(",");
+    const o = {};
+    head.forEach((h,i)=>o[h]=c[i]);
+    ["학년","반","국어","영어","수학","과학","사회","출석일수"].forEach(k=>o[k]=Number(o[k]));
+    o.총점 = SUBJECTS.reduce((s,k)=>s+o[k],0);
+    o.평균 = +(o.총점/SUBJECTS.length).toFixed(1);
+    return o;
+  });
+}
+
+const avg = a => a.reduce((s,x)=>s+x,0)/a.length;
+
+function gradeTag(mean){
+  if(mean>=80) return '<span class="pill p-good">우수</span>';
+  if(mean>=65) return '<span class="pill p-mid">보통</span>';
+  return '<span class="pill p-low">노력</span>';
+}
+
+function render(){
+  const totalAvg = avg(students.map(s=>s.평균));
+  const attAvg = avg(students.map(s=>s.출석일수));
+  const top = [...students].sort((a,b)=>b.총점-a.총점)[0];
+  const male = students.filter(s=>s.성별==="남").length;
+
+  const app = document.getElementById("app");
+  app.innerHTML = `
+    <div class="cards">
+      <div class="card"><div class="label">총 학생 수</div><div class="value">${students.length}명</div></div>
+      <div class="card"><div class="label">전체 평균점수</div><div class="value">${totalAvg.toFixed(1)}점</div></div>
+      <div class="card"><div class="label">평균 출석일수</div><div class="value">${attAvg.toFixed(1)}일</div></div>
+      <div class="card"><div class="label">최고 득점자</div><div class="value" style="font-size:20px">${top.이름} (${top.총점})</div></div>
+      <div class="card"><div class="label">남 / 여</div><div class="value">${male} / ${students.length-male}</div></div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h2>과목별 평균 점수</h2>
+        <div id="subjBars"></div>
+      </div>
+      <div class="panel">
+        <h2>학년별 평균 점수</h2>
+        <div class="chart" id="gradeChart"></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h2>점수 등급 분포</h2>
+      <div id="distBars"></div>
+    </div>
+
+    <div class="panel">
+      <h2>학생 명단</h2>
+      <div class="toolbar">
+        <input id="search" type="text" placeholder="이름 검색…">
+        <select id="filterGrade">
+          <option value="">전체 학년</option>
+          <option value="1">1학년</option><option value="2">2학년</option><option value="3">3학년</option>
+        </select>
+        <select id="filterGender">
+          <option value="">전체 성별</option>
+          <option value="남">남</option><option value="여">여</option>
+        </select>
+      </div>
+      <div style="overflow-x:auto"><table id="tbl"></table></div>
+    </div>
+  `;
+
+  renderSubjectBars();
+  renderGradeChart();
+  renderDistBars();
+  renderTable();
+
+  document.getElementById("search").oninput = renderTable;
+  document.getElementById("filterGrade").onchange = renderTable;
+  document.getElementById("filterGender").onchange = renderTable;
+}
+
+function renderSubjectBars(){
+  const el = document.getElementById("subjBars");
+  el.innerHTML = SUBJECTS.map(sub=>{
+    const m = avg(students.map(s=>s[sub]));
+    return `<div class="bar-row"><span class="name">${sub}</span>
+      <span class="bar-track"><span class="bar-fill" style="width:${m}%"></span></span>
+      <span class="num">${m.toFixed(1)}</span></div>`;
+  }).join("");
+}
+
+function renderGradeChart(){
+  const el = document.getElementById("gradeChart");
+  const grades=[1,2,3];
+  const data = grades.map(g=>{
+    const gs = students.filter(s=>s.학년===g);
+    return {g, m: gs.length?avg(gs.map(s=>s.평균)):0, n:gs.length};
+  });
+  const max = Math.max(...data.map(d=>d.m),1);
+  el.innerHTML = data.map(d=>`
+    <div class="col">
+      <div style="font-size:11px;font-weight:700">${d.m.toFixed(1)}</div>
+      <div class="colbar" style="height:${(d.m/max)*120}px"></div>
+      <div class="collabel">${d.g}학년 (${d.n})</div>
+    </div>`).join("");
+}
+
+function renderDistBars(){
+  const el = document.getElementById("distBars");
+  const buckets = [
+    {label:"우수 (80↑)", cls:"p-good", n:students.filter(s=>s.평균>=80).length},
+    {label:"보통 (65~79)", cls:"p-mid", n:students.filter(s=>s.평균>=65&&s.평균<80).length},
+    {label:"노력 (65↓)", cls:"p-low", n:students.filter(s=>s.평균<65).length},
+  ];
+  el.innerHTML = buckets.map(b=>`<div class="bar-row">
+    <span class="name" style="width:110px">${b.label}</span>
+    <span class="bar-track"><span class="bar-fill" style="width:${b.n/students.length*100}%"></span></span>
+    <span class="num">${b.n}명</span></div>`).join("");
+}
+
+function renderTable(){
+  const q = (document.getElementById("search")?.value||"").trim();
+  const fg = document.getElementById("filterGrade")?.value||"";
+  const fx = document.getElementById("filterGender")?.value||"";
+  let rows = students.filter(s=>
+    (!q||s.이름.includes(q)) &&
+    (!fg||s.학년===Number(fg)) &&
+    (!fx||s.성별===fx));
+  rows.sort((a,b)=> (a[sortKey]>b[sortKey]?1:a[sortKey]<b[sortKey]?-1:0)*sortDir);
+
+  const cols = ["학번","이름","성별","학년","반",...SUBJECTS,"총점","평균","출석일수","등급"];
+  const tbl = document.getElementById("tbl");
+  tbl.innerHTML = `<thead><tr>${cols.map(c=>{
+    const arrow = c===sortKey?(sortDir>0?" ▲":" ▼"):"";
+    return `<th data-k="${c}">${c}${arrow}</th>`;
+  }).join("")}</tr></thead><tbody>${
+    rows.map(s=>`<tr>
+      <td>${s.학번}</td><td class="name">${s.이름}</td><td>${s.성별}</td>
+      <td>${s.학년}</td><td>${s.반}</td>
+      ${SUBJECTS.map(k=>`<td>${s[k]}</td>`).join("")}
+      <td><b>${s.총점}</b></td><td>${s.평균}</td><td>${s.출석일수}</td>
+      <td>${gradeTag(s.평균)}</td></tr>`).join("")
+  }</tbody>`;
+
+  tbl.querySelectorAll("th").forEach(th=>{
+    th.onclick=()=>{
+      const k=th.dataset.k;
+      if(k==="등급") return;
+      if(sortKey===k) sortDir*=-1; else {sortKey=k; sortDir=-1;}
+      renderTable();
+    };
+  });
+}
+
+load();
+</script>
+</body>
+</html>
